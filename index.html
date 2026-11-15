@@ -41,13 +41,14 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <button id="ldm" aria-label="Опережение меньше">−</button><span id="ldv" class="val"></span><button id="ldp" aria-label="Опережение больше">+</button>
 <button id="spm" aria-label="Пауза слайда меньше">−</button><span id="spv" class="val"></span><button id="spp" aria-label="Пауза слайда больше">+</button>
 <button id="vo">Голос: вкл</button><select id="vs" aria-label="Голос"></select>
+<button id="srm" style="grid-column:span 4"></button>
 <button id="ed" class="w2">Текст питча</button><button id="lg" class="w2">Журнал</button>
 <span id="dbg" class="note"></span>
 </div>
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 8 · 15.11</span>
+<span id="ver" class="note">версия 9 · 15.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -164,14 +165,15 @@ function render(){const n=pos+1;let c=P.findIndex(p=>n<=p.w1);if(c<0)c=P.length-
 // Последние слова из распознавания выравниваются с текстом; позиция двигается только вперёд.
 // Чем дальше прыжок, тем больше слов подряд должно совпасть.
 function track(tx){
- const T=tx.toLowerCase().replace(/%/g,' процентов ').split(/[\s-]+/).map(stem).filter(Boolean).map(x=>/^\d+$/.test(x)?'#':ABBR[x]||x).slice(-6),m=T.length;if(!m)return;
+ const T=tx.toLowerCase().replace(/%/g,' процентов ').replace(/эм эс( эм)?/g,'мсм').split(/[\s-]+/).map(stem).filter(x=>x&&x!='unk').map(x=>/^\d+$/.test(x)?'#':ABBR[x]||x).slice(-6),m=T.length;if(!m)return;
+ const NM=T.map(x=>x=='#'||NUMW.test(x));
  const key=T.join(' ');if(key==lastKey)return;lastKey=key;tHeard=now();
  const wait=mode=='wait',vi=vIdx(now());
  const lo=Math.max(0,pos-6),hi=Math.min(N-1,wait?14:Math.max(pos+45,vi+6)),H=[];let best=-1,bv=-9;
  for(let i=0;i<m;i++){H[i]=[];
-  for(let j=lo;j<=hi;j++){if(!KS[j].includes(T[i]))continue;let b=0;
+  for(let j=lo;j<=hi;j++){const ex=T[i]!='#'&&KS[j].includes(T[i]);if(!ex&&!(NM[i]&&KS[j].includes('#')))continue;let b=0;
    for(let di=1;di<=2&&i-di>=0;di++)for(let dj=1;dj<=3&&j-dj>=lo;dj++){const h=H[i-di][j-dj];if(h!==undefined&&h-.4*(di+dj-2)>b)b=h-.4*(di+dj-2)}
-   H[i][j]=(T[i]=='#'?.4:WT[j])+b}}
+   H[i][j]=(ex?WT[j]:.4)+b}}
  for(let i=Math.max(0,m-2);i<m;i++)for(let j=pos+1;j<=hi;j++){const h=H[i][j];if(h===undefined)continue;
   const d=j-pos;let th=d<=2?1:d<=5?1.5:d<=12?2.5:3.5;
   if(!wait&&Math.abs(j-vi)<=6)th=Math.min(th,2);if(wait)th=Math.max(th,2);
@@ -255,10 +257,31 @@ function engine(t){
  else if(phase!='pause')phase='hold'}
 
 /* ---------- микрофон ---------- */
-function listen(){if(!on)return;if(rec){rec.onresult=rec.onend=rec.onstart=rec.onerror=rec.onspeechstart=rec.onspeechend=rec.onsoundstart=rec.onsoundend=rec.onaudiostart=rec.onaudioend=null;try{rec.abort()}catch(e){}}
+function heard(tx){if(!Q.length)$('#st').textContent='Слышу: …'+tx.trim().split(/\s+/).slice(-5).join(' ');track(tx)}
+/* Локальное распознавание (Vosk): модель работает в телефоне, интернет не нужен. Словарь — слова питча и числительные */
+let useLocal=LS.get('sr')!='google',vModel=null,vRec=null,vCtx=null,vStream=null,vNode=null,vTail='',vBusy=false;
+const EXTRA='добрый день один одна два две три четыре пять шесть семь восемь девять десять одиннадцать двенадцать тринадцать четырнадцать пятнадцать шестнадцать семнадцать восемнадцать девятнадцать двадцать тридцать сорок пятьдесят шестьдесят семьдесят восемьдесят девяносто сто двести триста четыреста пятьсот тысяча тысяч процент процента процентов с половиной и эм эс';
+async function loadVosk(){if(vModel)return;$('#st').textContent='Загружаю модель распознавания…';
+ if(!window.Vosk)await new Promise((ok,no)=>{const s=document.createElement('script');s.src='vosk/vosk.js';s.onload=ok;s.onerror=()=>no(new Error('vosk.js'));document.head.append(s)});
+ const bufs=[];for(const p of['vosk/model.tar.gz.00','vosk/model.tar.gz.01']){const r=await fetch(p);if(!r.ok)throw new Error(p);bufs.push(await r.arrayBuffer())}
+ vModel=await Vosk.createModel(URL.createObjectURL(new Blob(bufs)))}
+async function listenL(){const t=now();try{await loadVosk();if(!on)return;
+  if(!vStream){vStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:true,autoGainControl:true}});
+   vCtx=new (window.AudioContext||window.webkitAudioContext)();const src=vCtx.createMediaStreamSource(vStream);vNode=vCtx.createScriptProcessor(4096,1,1);
+   vNode.onaudioprocess=e=>{if(on&&vRec)try{vRec.acceptWaveform(e.inputBuffer)}catch(x){}};src.connect(vNode);vNode.connect(vCtx.destination);
+   log('mic',vStream.getAudioTracks()[0].label,vCtx.sampleRate)}
+  if(vRec)try{vRec.remove()}catch(e){}
+  const w=W.join(' ').toLowerCase().replace(/ё/g,'е').replace(/[^а-я\s-]/g,' ').split(/[\s-]+/).filter(Boolean);
+  vRec=new vModel.KaldiRecognizer(vCtx.sampleRate,JSON.stringify([[...new Set([...w,...EXTRA.split(' ')])].join(' '),'[unk]']));vTail='';
+  vRec.on('partialresult',e=>{const p=e.result.partial;if(p)heard(vTail+' '+p)});
+  vRec.on('result',e=>{const x=e.result.text;if(x){heard(vTail+' '+x);vTail=x.split(' ').slice(-5).join(' ')}});
+  recRun=true;tSR=now();log('sr+','local',now()-t);
+  if(mode=='wait'){$('#st').textContent='Жду первых слов питча…';const u=new SpeechSynthesisUtterance('Слушаю');u.lang='ru-RU';if(voice)u.voice=voice;speechSynthesis.speak(u)}}
+ catch(e){log('err','local',String(e));useLocal=false;showSet();$('#st').textContent='Локальное распознавание не запустилось, включаю обычное';if(SR)listen()}}
+function stopL(){try{vStream&&vStream.getTracks().forEach(t=>t.stop());vCtx&&vCtx.close();vRec&&vRec.remove()}catch(e){}vStream=vCtx=vRec=vNode=null}
+function listen(){if(!on)return;lastTry=now();if(useLocal){if(!vBusy&&!recRun){vBusy=true;listenL().finally(()=>{vBusy=false})}return}if(rec){rec.onresult=rec.onend=rec.onstart=rec.onerror=rec.onspeechstart=rec.onspeechend=rec.onsoundstart=rec.onsoundend=rec.onaudiostart=rec.onaudioend=null;try{rec.abort()}catch(e){}}
  rec=new SR();rec.lang='ru-RU';rec.continuous=true;rec.interimResults=true;
- rec.onresult=e=>{const r=e.results,n=r.length;let tx=r[n-1][0].transcript;if(n>1)tx=r[n-2][0].transcript+' '+tx;
-  if(!Q.length)$('#st').textContent='Слышу: …'+tx.trim().split(/\s+/).slice(-5).join(' ');track(tx)};
+ rec.onresult=e=>{const r=e.results,n=r.length;let tx=r[n-1][0].transcript;if(n>1)tx=r[n-2][0].transcript+' '+tx;heard(tx)};
  rec.onerror=e=>{if(e.error=='no-speech'||e.error=='aborted')return;log('err',e.error);
   const f=e.error=='not-allowed'||e.error=='service-not-allowed';if(f)stop();
   $('#st').textContent='Ошибка распознавания: '+e.error+(f?'. Микрофон закрыт для этой страницы':'')};
@@ -271,25 +294,25 @@ function ka(){if(ac)return;const A=window.AudioContext||window.webkitAudioContex
 function wake(){if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{})}
 
 /* ---------- управление ---------- */
-function start(){if(!SR){$('#st').textContent='Нужен Chrome на Android: тут нет распознавания речи';return}
+function start(){if(!SR&&!useLocal){$('#st').textContent='В этом браузере нет распознавания речи: включи локальное в настройках';return}
  const t=now();on=true;if(pos<0||!tL){LOG=[];tL=t}log('start',navigator.userAgent,leadT,slideP,+tempo.toFixed(1),+vps.toFixed(1),navigator.onLine,(navigator.connection||{}).effectiveType||'');
  gen++;Q=[];rel=0;auto=false;shadow=null;bet=0;tPos=tVE=t;vNext=pos+1;
  if(pos<0){mode='wait';t0=0;hold=t+3000;                                               // проверочная фраза: слышно ли наушник и какой темп у голоса
-  const u=new SpeechSynthesisUtterance('Суфлёр готов к работе'),g=gen;let a=0;u.lang='ru-RU';if(voice)u.voice=voice;
+  const u=new SpeechSynthesisUtterance('Суфлёр включён, подожди'),g=gen;let a=0;u.lang='ru-RU';if(voice)u.voice=voice;
   u.onstart=()=>{a=now();lat=cl(a-t,50,800)};u.onend=()=>{if(g==gen&&a&&now()-a>400)vps=cl(vps*.6+.4*22/((now()-a)/1000),8,27);hold=0};
   speechSynthesis.cancel();speechSynthesis.speak(u)}
  else{mode='lead';if(!t0)t0=t-C[pos]/tempo*1000;speechSynthesis.speak(new SpeechSynthesisUtterance(''))}
  $('#st').textContent=window.top!==window.self?'Страница во встроенном окне: если микрофон не включится, открой её отдельно':'Жду первых слов питча…';
  $('#go').textContent='Стоп';try{ka()}catch(e){}listen();wake()}
-function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}catch(e){}
+function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}catch(e){}stopL();recRun=false;
  gen++;Q=[];speechSynthesis.cancel();$('#go').textContent='Старт';log('stop');if(pos>60){LS.set('lag',lagE.toFixed(2));LS.set('slag',sLag.toFixed(2));LS.set('tempo',tempo.toFixed(2));LS.set('vps',vps.toFixed(2))}LS.set('log',dump())}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:8,lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:9,sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
- if(on&&recRun&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
+ if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
  const lab={lead:'веду',slide:'веду',pause:'пауза слайда',hold:'жду тебя',relead:'подсказываю',auto:'веду по плану'};
  $('#th').textContent=!on?'':(recRun?'● слушаю':'○ микрофон')+' · '+(mode=='wait'?'жду начала':t<muteUntil?'пауза':lab[phase]||'');
  $('#dbg').textContent='Твой темп '+(tempo*N/C[N-1]).toFixed(1)+' сл/с · голос '+(vps*N/C[N-1]).toFixed(1)+' сл/с · ты идёшь за голосом на '+lagE.toFixed(1)+' с';
@@ -297,7 +320,7 @@ function tick(){const t=now();engine(t);
  $('#tm').textContent=Math.floor(el/60)+':'+String(Math.floor(el%60)).padStart(2,'0');
  const s=S[P[cur].s],e=S[P[cur].s+1]?S[P[cur].s+1].a:END,fr=cl((pos+1-s.w0)/(s.w1-s.w0+1),0,1),b=Math.round(el-(s.a+fr*(e-s.a)));
  $('#dl').textContent=Math.abs(b)<5?'в графике':b>0?'отстаёшь на '+b+' с':'впереди на '+(-b)+' с'}
-function showSet(){$('#ldv').textContent='Опережение '+leadT.toFixed(1)+' с';$('#spv').textContent='Пауза слайда '+slideP.toFixed(1)+' с'}
+function showSet(){$('#srm').textContent='Распознавание: '+(useLocal?'в телефоне (без интернета)':'Google (нужен интернет)');$('#ldv').textContent='Опережение '+leadT.toFixed(1)+' с';$('#spv').textContent='Пауза слайда '+slideP.toFixed(1)+' с'}
 const step=(k,d,a,b)=>()=>{if(k=='lead'){leadT=cl(+(leadT+d).toFixed(1),a,b);LS.set(k,leadT)}else{slideP=cl(+(slideP+d).toFixed(1),a,b);LS.set(k,slideP)}showSet()};
 $('#go').onclick=()=>on?stop():start();
 $('#bk').onclick=()=>nav((cur>0?P[cur-1].w0:0)-1);
@@ -310,6 +333,7 @@ $('#cf').onclick=()=>{$('#set').hidden=!$('#set').hidden;$('#box').hidden=true};
 $('#ldm').onclick=step('lead',-.1,0,1.2);$('#ldp').onclick=step('lead',.1,0,1.2);
 $('#spm').onclick=step('slideP',-.5,0,4);$('#spp').onclick=step('slideP',.5,0,4);
 function box(l){boxLog=l;$('#ta').value=l?(LOG.length?dump():LS.get('log')||'Журнал пуст'):src;$('#ta').readOnly=l;$('#sv').textContent=l?'Скопировать журнал':'Сохранить текст';$('#box').hidden=false}
+$('#srm').onclick=()=>{if(on)return;useLocal=!useLocal;LS.set('sr',useLocal?'local':'google');showSet()};
 $('#ed').onclick=()=>box(false);$('#lg').onclick=()=>box(true);$('#cx').onclick=()=>{$('#box').hidden=true};
 $('#sv').onclick=()=>{if(boxLog){$('#ta').select();try{navigator.clipboard.writeText($('#ta').value)}catch(e){document.execCommand('copy')}$('#sv').textContent='Скопировано';return}
  src=$('#ta').value;LS.set('pitch',src);parse();build();nav(-1);t0=0;mode=on?'wait':'idle';$('#box').hidden=true};
@@ -327,4 +351,5 @@ function pv(){const l=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLow
 speechSynthesis.onvoiceschanged=pv;pv();
 parse();build();render();showSet();setInterval(tick,100);
 window.__dbg=()=>({W,C,S,slSt,pos,mode,phase,auto,rel,tempo,vps,lat,vNext,LOG});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
