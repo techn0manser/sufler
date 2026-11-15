@@ -47,7 +47,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 7 · 15.11</span>
+<span id="ver" class="note">версия 8 · 15.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -118,7 +118,7 @@ let on=false,mode='idle',phase='',pos=-1,tPos=0,t0=0,cur=0,lastCur=-1;
 let tempo=14,plan=14,vps=15,lat=250,bet=0;                    // темп человека и по плану; темп голоса при rate=1 (звуков/с); задержка старта голоса, мс
 let leadT=num('lead',.5),slideP=num('slideP',1.3);     // опережение и пауза между слайдами, с
 let Q=[],gen=0,vNext=0,tVE=0,hold=0,lastJump=0,rel=0,auto=false,shadow=null,force=false;
-let vT=[],lagE=cl(num('lag',1.2),0,2.2),nud=false,hist=[],uC=0,lastKey='',tHeard=0,tUnk=0,muteUntil=0,voiceOn=true,voice=null;
+let vT=[],slW0=[],tSR=0,sLag=cl(num('slag',1.5),0,2.5),lagE=cl(num('lag',1.2),0,2.2),nud=false,hist=[],uC=0,lastKey='',tHeard=0,tUnk=0,muteUntil=0,voiceOn=true,voice=null;
 let rec=null,recRun=false,lastTry=0,ac=null,LOG=[],tL=0,boxLog=false;
 
 const NUMW=/^(один|одна|одной|одну|два|две|двух|двум|три|трех|трем|четыр|пять|пяти|шесть|шести|семь|семи|восем|восьм|девят|десят|одинн|двена|трина|пятна|шестн|семна|двадц|тридц|сорок|пятид|семид|девян|сто|ста|двест|трист|сотой|сотых|седьм|тысяч)/;
@@ -148,7 +148,7 @@ function parse(){W=[];P=[];S=[];
    if(l&&(l[1]-l[0]<2||s[1]-s[0]<1)&&s[1]-l[0]<8)l[1]=s[1];else out.push(s.slice())}
   out.forEach(([a,b])=>{const n=b-a+1,k=n<=8?n:Math.ceil(n/Math.ceil(n/6));
    for(let i=a;i<=b;i+=k){const e=Math.min(b,i+k-1);for(let j=i;j<=e;j++)chEnd[j]=e}})});
- plan=cl(C[N-1]/(END-(S.length-1)*(slideP+.5)),9.5,17.5);tempo=cl(num('tempo',plan*.9),TMIN,TMAX);vps=cl(num('vps',15),8,27);
+ plan=cl(C[N-1]/(END-(S.length-1)*(slideP+.5)),9.5,17.5);slW0=[];S.forEach(s=>{for(let i=s.w0;i<=s.w1;i++)slW0[i]=s.w0});tempo=cl(num('tempo',plan*.9),TMIN,TMAX);vps=cl(num('vps',15),8,27);
  pos=-1;cur=0;lastCur=-1}
 function build(){const el=$('#txt');el.innerHTML='';ws=[];phs=[];let si=-1;
  P.forEach((p,pi)=>{if(p.s!=si){si=p.s;const h=document.createElement('h3');h.textContent=(si+1)+'. '+S[si].t;el.append(h)}
@@ -185,7 +185,7 @@ function advance(j){const t=now(),d=j-pos;
  hist.push([t/1000,C[j]]);while(hist.length>2&&t/1000-hist[0][0]>10)hist.shift();
  const n=hist.length;if(n>=5&&t/1000-hist[0][0]>=4){let mt=0,mc=0,a=0,b=0;hist.forEach(h=>{mt+=h[0]/n;mc+=h[1]/n});
   hist.forEach(h=>{a+=(h[0]-mt)*(h[1]-mc);b+=(h[0]-mt)**2});tempo=cl(tempo*.85+.15*a/b,TMIN,TMAX)}
- if(vT[j]&&t-vT[j]<8000){const l=(t-REC*1000-vT[j])/1000;if(l>-.5&&l<4)lagE=cl(lagE*.85+.15*l,0,2.2)}   // учимся, на сколько человек отстаёт от голоса
+ if(vT[j]&&t-vT[j]<8000){const l=(t-REC*1000-vT[j])/1000;if(l>-.5&&l<4){if(j-slW0[j]<=2&&slW0[j]>0)sLag=cl(sLag*.7+.3*l,0,2.5);else lagE=cl(lagE*.85+.15*l,0,2.2)}}   // учимся, на сколько человек отстаёт от голоса
  pos=j;tPos=t;rel=0;auto=false;bet=0;nud=false;render()}
 // Оценка в слогах: где сейчас человек и где голос
 function uNow(t){let u=0;
@@ -213,6 +213,7 @@ function say(s,kind,t,tS){let e=chEnd[s];if(e==s&&e<N-1&&!slSt[e+1])e=chEnd[e+1]
   Q=Q.filter(a=>a!=q);tVE=t;log('en',e)};
  u.onend=()=>fin(true);u.onerror=()=>fin(false);
  if(kind!='lead'||!Q.length&&t-tPos>1000)shadow={t,c:Cb(s)};
+ if(kind=='relead')bet=0;
  if(kind=='lead'&&s>vNext&&s>pos+1)bet=t;                                                 // пропустили слова в расчёте, что человек говорит сам
  Q.push(q);vNext=e+1;phase=kind;log('say',kind,s,e,+rate.toFixed(2));
  $('#st').textContent='Голос: '+x;speechSynthesis.speak(u)}
@@ -239,15 +240,15 @@ function engine(t){
  if(slSt[s]&&pos<s){                                                                   // граница слайдов: пауза на вдох
   const fin=tPos+((Cb(s)-C[pos])/tempo-REC)*1000;                                      // когда человек должен договорить слайд
   if(auto||pos>=s-6&&t>=fin){phase='pause';const ref=auto?tVE+leadT*1000:Math.max(tVE+leadT*1000,fin);
-   if(t-tUnk<700&&t<ref+slideP*1000+1500)return;                                      // слышим речь: возможно, он начал сам — не перебиваем
-   if(t>=ref+slideP*1000-lat)say(s,auto?'auto':'slide',t,tS);return}
+   const sp=Math.max(300,(slideP-sLag)*1000);if(t-tUnk<700&&t<ref+sp+1500)return;                                      // слышим речь: возможно, он начал сам — не перебиваем
+   if(t>=ref+(auto?slideP*1000:sp)-lat)say(s,auto?'auto':'slide',t,tS);return}
   if(act)return}
  else{
   if(auto){say(s,'auto',t,tS);return}
   if(act&&pos>=vNext)s=Math.max(s,ahead(tS));                                          // человек говорит сам: начинаем с места чуть впереди него
   if(gate(s,tS)){say(s,'lead',t,tS);return}}
  if(!nud&&t-tHeard>1200&&t-tVE>900&&Cb(s)-C[pos]<=24&&!slSt[s]){nud=true;say(s,'slide',t,tS);return}   // тишина, а не подтверждены лишь 1–3 слова: скорее всего они сказаны, ведём дальше
- if((t-tHeard>1500&&t-tPos>2200||t-tPos>7000)&&t-tVE>(rel?1800:900)){                    // человек замолчал (или давно говорит не по тексту): ведём заново с места остановки
+ if((t-tHeard>1500&&t-tPos>2200||t-tPos>7000)&&t-tVE>(rel?1800:900)&&recRun&&t-tSR>3000){                    // человек замолчал (или давно говорит не по тексту): ведём заново с места остановки
   if(rel<2){rel++;let r=Math.min(pos+1,N-1);if(slSt[r+1])r++;else if(slSt[r+2])r+=2;      // не договорил пару слов слайда — начинаем со следующего слайда
    say(r,'relead',t,tS)}
   else{auto=true;log('auto');say(s,'auto',t,tS)}}                                      // две попытки без ответа: идём дальше по плану
@@ -261,7 +262,7 @@ function listen(){if(!on)return;if(rec){rec.onresult=rec.onend=rec.onstart=rec.o
  rec.onerror=e=>{if(e.error=='no-speech'||e.error=='aborted')return;log('err',e.error);
   const f=e.error=='not-allowed'||e.error=='service-not-allowed';if(f)stop();
   $('#st').textContent='Ошибка распознавания: '+e.error+(f?'. Микрофон закрыт для этой страницы':'')};
- rec.onstart=()=>{recRun=true;log('sr+')};
+ rec.onstart=()=>{recRun=true;tSR=now();log('sr+')};
  rec.onend=()=>{recRun=false;log('sr-');setTimeout(()=>{if(on&&!recRun)listen()},200)};
  rec.onspeechstart=()=>log('sp+');rec.onspeechend=()=>log('sp-');rec.onsoundstart=()=>log('snd+');rec.onsoundend=()=>log('snd-');rec.onaudiostart=()=>log('au+');rec.onaudioend=()=>log('au-');
  lastTry=now();try{rec.start()}catch(e){recRun=false}}
@@ -281,11 +282,11 @@ function start(){if(!SR){$('#st').textContent='Нужен Chrome на Android: �
  $('#st').textContent=window.top!==window.self?'Страница во встроенном окне: если микрофон не включится, открой её отдельно':'Жду первых слов питча…';
  $('#go').textContent='Стоп';try{ka()}catch(e){}listen();wake()}
 function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}catch(e){}
- gen++;Q=[];speechSynthesis.cancel();$('#go').textContent='Старт';log('stop');if(pos>60){LS.set('lag',lagE.toFixed(2));LS.set('tempo',tempo.toFixed(2));LS.set('vps',vps.toFixed(2))}LS.set('log',dump())}
+ gen++;Q=[];speechSynthesis.cancel();$('#go').textContent='Старт';log('stop');if(pos>60){LS.set('lag',lagE.toFixed(2));LS.set('slag',sLag.toFixed(2));LS.set('tempo',tempo.toFixed(2));LS.set('vps',vps.toFixed(2))}LS.set('log',dump())}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:7,lagE:+lagE.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:8,lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
