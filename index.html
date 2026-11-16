@@ -43,6 +43,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <button id="vlm" aria-label="Тише">−</button><span id="vlv" class="val"></span><button id="vlp" aria-label="Громче">+</button>
 <button id="vo">Голос: вкл</button><select id="vs" aria-label="Голос"></select>
 <button id="srm" style="grid-column:span 4"></button>
+<select id="mic" aria-label="Микрофон" style="grid-column:span 4"><option value="">Микрофон: по умолчанию</option></select>
 <button id="vsrc" class="w2"></button><button id="vfile" class="w2">Выбрать запись</button><input id="vf" type="file" accept="audio/*" hidden>
 <button id="ed" class="w2">Текст питча</button><button id="lg" class="w2">Журнал</button>
 <span id="dbg" class="note"></span>
@@ -50,7 +51,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 12 · 16.11</span>
+<span id="ver" class="note">версия 13 · 16.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -229,7 +230,7 @@ function cancelAll(t){gen++;Q=[];speechSynthesis.cancel();if(aEl)aEl.pause();hol
 let aCtx=null,vol=num('vol',1.5);
 function wire(){if(!aEl)return;try{if(!aCtx)aCtx=new (window.AudioContext||window.webkitAudioContext)();aCtx.resume();
   if(!aEl._g){const s=aCtx.createMediaElementSource(aEl),g=aCtx.createGain(),c=aCtx.createDynamicsCompressor();s.connect(g);g.connect(c);c.connect(aCtx.destination);aEl._g=g}aEl._g.gain.value=vol}catch(e){log('err','wire',String(e))}}
-let aEl=null,TM=null,TMd=0,recWant=LS.get('vsrc')=='rec';
+let aEl=null,TM=null,TMd=0,recWant=LS.get('vsrc')!='tts';
 const recOn=()=>!!(recWant&&aEl&&TM&&TM.length==N);
 function aPump(){const q=Q[0];if(!q||!q.a||!aEl)return;const A=q.a;
  if(!A.go){A.go=1;if(aEl.paused||Math.abs(aEl.currentTime-A.ts)>.3)aEl.currentTime=A.ts;aEl.playbackRate=A.pr;if(aEl.paused)aEl.play().catch(e=>log('err','play',String(e)))}
@@ -297,7 +298,9 @@ async function loadVosk(){if(vModel)return;$('#st').textContent='Загружа�
  const bufs=[];for(const p of['vosk/model.tar.gz.00','vosk/model.tar.gz.01']){const r=await fetch(p);if(!r.ok)throw new Error(p);bufs.push(await r.arrayBuffer())}
  vModel=await Vosk.createModel(URL.createObjectURL(new Blob(bufs)))}
 async function listenL(){const t=now();try{await loadVosk();if(!on)return;
-  if(!vStream){vStream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:true,autoGainControl:true}});
+  if(!vStream){const au={channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},id=LS.get('mic');   // подавление эха: чтобы суфлёр не слышал собственный голос из наушника
+   try{vStream=await navigator.mediaDevices.getUserMedia({audio:id?{...au,deviceId:{exact:id}}:au})}catch(e){log('err','mic',String(e));vStream=await navigator.mediaDevices.getUserMedia({audio:au})}
+   listMics();
    vCtx=new (window.AudioContext||window.webkitAudioContext)();const src=vCtx.createMediaStreamSource(vStream);vNode=vCtx.createScriptProcessor(4096,1,1);
    vNode.onaudioprocess=e=>{if(on&&vRec)try{vRec.acceptWaveform(e.inputBuffer)}catch(x){}};src.connect(vNode);vNode.connect(vCtx.destination);
    log('mic',vStream.getAudioTracks()[0].label,vCtx.sampleRate)}
@@ -311,6 +314,9 @@ async function listenL(){const t=now();try{await loadVosk();if(!on)return;
   recRun=true;tSR=now();log('sr+','local',now()-t);
   if(mode=='wait'){$('#st').textContent='Жду первых слов питча…';const u=new SpeechSynthesisUtterance('Слушаю');u.lang='ru-RU';if(voice)u.voice=voice;speechSynthesis.speak(u)}}
  catch(e){log('err','local',String(e));useLocal=false;showSet();$('#st').textContent='Локальное распознавание не запустилось, включаю обычное';if(SR)listen()}}
+async function listMics(){try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind=='audioinput'&&x.deviceId!='default'&&x.deviceId!='communications'),s=$('#mic'),cur=LS.get('mic')||'';
+  if(!d.length||!d.some(x=>x.label))return;s.innerHTML='<option value="">Микрофон: по умолчанию</option>';
+  d.forEach(x=>{const o=document.createElement('option');o.value=x.deviceId;o.textContent='Микрофон: '+x.label;s.append(o)});s.value=d.some(x=>x.deviceId==cur)?cur:''}catch(e){}}
 function stopL(){try{vStream&&vStream.getTracks().forEach(t=>t.stop());vCtx&&vCtx.close();vRec&&vRec.remove()}catch(e){}vStream=vCtx=vRec=vNode=null}
 function listen(){if(!on)return;lastTry=now();if(useLocal){if(!vBusy&&!recRun){vBusy=true;listenL().finally(()=>{vBusy=false})}return}if(rec){rec.onresult=rec.onend=rec.onstart=rec.onerror=rec.onspeechstart=rec.onspeechend=rec.onsoundstart=rec.onsoundend=rec.onaudiostart=rec.onaudioend=null;try{rec.abort()}catch(e){}}
  rec=new SR();rec.lang='ru-RU';rec.continuous=true;rec.interimResults=true;
@@ -342,7 +348,7 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:12,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:13,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
@@ -361,7 +367,8 @@ $('#nx').onclick=()=>nav(P[cur].w1);
 $('#rs').onclick=()=>{nav(-1);t0=0;mode=on?'wait':'idle';$('#tm').textContent='0:00';$('#dl').textContent='—'};
 $('#hn').onclick=()=>{if(!on)return;const t=now();if(mode!='lead'){mode='lead';if(!t0)t0=t}muteUntil=0;cancelAll(t);force=true};
 $('#ps').onclick=()=>{const t=now();muteUntil=t+10000;cancelAll(t);$('#st').textContent='Пауза 10 с: голос молчит'};
-$('#vlm').onclick=()=>{vol=cl(+(vol-.5).toFixed(1),.5,4);LS.set('vol',vol);wire();showSet()};$('#vlp').onclick=()=>{vol=cl(+(vol+.5).toFixed(1),.5,4);LS.set('vol',vol);wire();showSet()};
+$('#vlm').onclick=()=>{vol=cl(+(vol-.5).toFixed(1),.5,4);LS.set('vol',vol);wire();showSet()};$('#vlp').onclick=()=>{vol=cl(+(vol+.5).toFixed(1),.5,8);LS.set('vol',vol);wire();showSet()};
+$('#mic').onchange=e=>{LS.set('mic',e.target.value)};
 $('#vsrc').onclick=()=>{if(on)return;recWant=!recWant;LS.set('vsrc',recWant?'rec':'tts');showSet()};
 $('#vfile').onclick=()=>$('#vf').click();$('#vf').onchange=e=>{if(e.target.files[0])pickVoice(e.target.files[0])};
 $('#vo').onclick=e=>{voiceOn=!voiceOn;if(!voiceOn)cancelAll(now());e.target.textContent='Голос: '+(voiceOn?'вкл':'выкл')};
@@ -385,7 +392,7 @@ function pv(){const l=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLow
  voice=l.find(v=>v.name==keep)||l.find(v=>/natural|neural/i.test(v.name))||l[0]||null;if(voice)s.value=voice.name;if(!l.length)s.innerHTML='<option>Голос по умолчанию</option>';
  s.onchange=()=>{voice=l.find(v=>v.name==s.value)||voice;if(voice)LS.set('voice',voice.name);const u=new SpeechSynthesisUtterance('Проверка голоса: меня зовут Евгений.');u.voice=voice;speechSynthesis.cancel();speechSynthesis.speak(u)}}
 speechSynthesis.onvoiceschanged=pv;pv();
-parse();build();render();showSet();setInterval(tick,100);loadVoice();
+parse();build();render();showSet();setInterval(tick,100);loadVoice();listMics();
 window.__dbg=()=>({W,C,S,slSt,pos,mode,phase,auto,rel,tempo,vps,lat,vNext,LOG});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
