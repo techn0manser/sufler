@@ -51,7 +51,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 13 · 16.11</span>
+<span id="ver" class="note">версия 14 · 16.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -122,7 +122,7 @@ let on=false,mode='idle',phase='',pos=-1,tPos=0,t0=0,cur=0,lastCur=-1;
 let tempo=14,plan=14,vps=15,lat=250,bet=0;                    // темп человека и по плану; темп голоса при rate=1 (звуков/с); задержка старта голоса, мс
 let leadT=num('lead',.5),slideP=num('slideP',1.3);     // опережение и пауза между слайдами, с
 let Q=[],gen=0,vNext=0,tVE=0,hold=0,lastJump=0,rel=0,auto=false,shadow=null,force=false;
-let vT=[],slW0=[],tSR=0,sLag=cl(num('slag',1.5),0,2.5),lagE=cl(num('lag',1.2),0,2.2),nud=false,hist=[],uC=0,lastKey='',tHeard=0,tUnk=0,muteUntil=0,voiceOn=true,voice=null;
+let chSt=[],micName='',vT=[],slW0=[],tSR=0,sLag=cl(num('slag',1.5),0,2.5),lagE=cl(num('lag',1.2),0,2.2),nud=false,hist=[],uC=0,lastKey='',tHeard=0,tUnk=0,muteUntil=0,voiceOn=true,voice=null;
 let rec=null,recRun=false,lastTry=0,ac=null,LOG=[],tL=0,boxLog=false;
 
 const NUMW=/^(один|одна|одной|одну|два|две|двух|двум|три|трех|трем|четыр|пять|пяти|шесть|шести|семь|семи|восем|восьм|девят|десят|одинн|двена|трина|пятна|шестн|семна|двадц|тридц|сорок|пятид|семид|девян|сто|ста|двест|трист|сотой|сотых|седьм|тысяч)/;
@@ -141,7 +141,7 @@ function parse(){W=[];P=[];S=[];
   l.split(/(?<=[.!?…])\s+/).forEach(x=>{const a=x.split(/\s+/).filter(Boolean);if(!a.length)return;
    P.push({s:S.length-1,w0:W.length,w1:W.length+a.length-1});a.forEach(w=>W.push(w));S[S.length-1].w1=W.length-1})});
  if(!P.length){S=[{t:'Питч',a:0,w0:0,w1:0}];P=[{s:0,w0:0,w1:0}];W=['Текст']}
- N=W.length;C=[];KS=[];WT=[];chEnd=[];slSt=[];let c=0;
+ N=W.length;C=[];KS=[];WT=[];chEnd=[];chSt=[];slSt=[];let c=0;
  W.forEach((w,i)=>{c+=syl(w);C[i]=c;
   const parts=w.split('-'),k=[stem(w),stem(parts[0]),stem(parts[parts.length-1])].filter(Boolean);if(k.some(x=>/\d/.test(x)||NUMW.test(x)))k.push('#');KS[i]=k;
   const n=k.length?k[0].length:0;WT[i]=/\d/.test(k[0]||'')||n>=5?1:n>=3?.7:n==2?.5:.3});
@@ -151,7 +151,7 @@ function parse(){W=[];P=[];S=[];
   let out=[];for(const s of segs){const l=out[out.length-1];
    if(l&&(l[1]-l[0]<2||s[1]-s[0]<1)&&s[1]-l[0]<8)l[1]=s[1];else out.push(s.slice())}
   out.forEach(([a,b])=>{const n=b-a+1,k=n<=8?n:Math.ceil(n/Math.ceil(n/6));
-   for(let i=a;i<=b;i+=k){const e=Math.min(b,i+k-1);for(let j=i;j<=e;j++)chEnd[j]=e}})});
+   for(let i=a;i<=b;i+=k){const e=Math.min(b,i+k-1);for(let j=i;j<=e;j++){chEnd[j]=e;chSt[j]=i}}})});
  plan=cl(C[N-1]/(END-(S.length-1)*(slideP+.5)),9.5,17.5);slW0=[];S.forEach(s=>{for(let i=s.w0;i<=s.w1;i++)slW0[i]=s.w0});tempo=cl(num('tempo',plan*.9),TMIN,TMAX);vps=cl(num('vps',15),8,27);
  pos=-1;cur=0;lastCur=-1}
 function build(){const el=$('#txt');el.innerHTML='';ws=[];phs=[];let si=-1;
@@ -178,6 +178,7 @@ function track(tx){
    for(let di=1;di<=2&&i-di>=0;di++)for(let dj=1;dj<=3&&j-dj>=lo;dj++){const h=H[i-di][j-dj];if(h!==undefined&&h-.4*(di+dj-2)>b)b=h-.4*(di+dj-2)}
    H[i][j]=(ex?WT[j]:.4)+b}}
  for(let i=Math.max(0,m-2);i<m;i++)for(let j=pos+1;j<=hi;j++){const h=H[i][j];if(h===undefined)continue;
+  if(!wait&&chSt[j]==j&&j<N-1)continue;                                                   // одиночному первому слову новой фразы не верим: модель часто «угадывает» его
   const d=j-pos;let th=d<=2?1:d<=5?1.5:d<=12?2.5:3.5;
   if(!wait&&Math.abs(j-vi)<=6)th=Math.min(th,2);if(wait)th=Math.max(th,2);
   if(h<th)continue;const v=h-.08*Math.abs(d-2)-(i<m-1?.3:0);if(v>bv){bv=v;best=j}}
@@ -222,7 +223,6 @@ function say(s,kind,t,tS){let e=chEnd[s];if(e==s&&e<N-1&&!slSt[e+1])e=chEnd[e+1]
  q.fin=fin;u.onend=()=>fin(true);u.onerror=()=>fin(false);
  if(kind!='lead'||!Q.length&&t-tPos>1000)shadow={t,c:Cb(s)};
  if(kind=='relead')bet=0;
- if(kind=='lead'&&s>vNext&&s>pos+1)bet=t;                                                 // пропустили слова в расчёте, что человек говорит сам
  Q.push(q);vNext=e+1;phase=kind;log('say',kind,s,e,+rate.toFixed(2));
  $('#st').textContent='Голос: '+x;if(a)aPump();else speechSynthesis.speak(u)}
 function cancelAll(t){gen++;Q=[];speechSynthesis.cancel();if(aEl)aEl.pause();hold=t+120;tVE=t}
@@ -259,8 +259,6 @@ function engine(t){
  if(q){
   if(!q.t1){if(!q.h)q.h=t;if(!q.a&&t-Math.max(q.t0,q.h)>lat+400)q.t1=Math.max(q.t0,q.h)+lat}
   if(t-(q.t1||q.t0)>q.n/(vps*q.rate)*2000+4000){log('wd');cancelAll(t);return}       // голос завис
-  if(q.t1&&t-lastJump>1500&&(t-tPos<900&&C[pos]>vNow(t)+U1||lagE<.5&&selfLead(t)>.3)){                                     // человек обогнал голос: перескакиваем вперёд него
-   const a=ahead(t+lat+120);if(Cb(a)>vNow(t+lat+120)+U1){log('jump',pos,a);cancelAll(t);vNext=a;lastJump=bet=t;return}}
   if(Q.length>1||!q.t1)return;
   const D=q.n/(vps*q.rate)*1000,tE=q.t1+D,s=vNext;                                     // следующий кусок ставим в очередь заранее, чтобы не было щели
   if(tE-t>Math.max(700,D*.4)||s>=N||slSt[s])return;
@@ -269,7 +267,7 @@ function engine(t){
   return}
  if(t<hold)return;
  let s=Math.max(vNext,pos+1);const act=t-tPos<1000,tS=t+lat;
- if(force){force=false;rel=0;say(Math.min(pos+1,N-1),'relead',t,tS);return}
+ if(force){force=false;rel=0;say(chSt[Math.min(pos+1,N-1)],'relead',t,tS);return}
  if(s>=N){if(pos>=N-3||t-Math.max(tPos,tVE)>4000)finish();return}
  if(slSt[s]&&pos<s){                                                                   // граница слайдов: пауза на вдох
   const fin=tPos+((Cb(s)-C[pos])/tempo-REC)*1000;                                      // когда человек должен договорить слайд
@@ -279,11 +277,10 @@ function engine(t){
   if(act)return}
  else{
   if(auto){say(s,'auto',t,tS);return}
-  if(act&&pos>=vNext)s=Math.max(s,ahead(tS));                                          // человек говорит сам: начинаем с места чуть впереди него
   if(gate(s,tS)){say(s,'lead',t,tS);return}}
  if(!nud&&t-tHeard>1200&&t-tVE>900&&Cb(s)-C[pos]<=24&&!slSt[s]){nud=true;say(s,'slide',t,tS);return}   // тишина, а не подтверждены лишь 1–3 слова: скорее всего они сказаны, ведём дальше
  if((t-tHeard>1500&&t-tPos>2200||t-tPos>7000)&&t-tVE>(rel?1800:900)&&recRun&&t-tSR>3000){                    // человек замолчал (или давно говорит не по тексту): ведём заново с места остановки
-  if(rel<2){rel++;let r=Math.min(pos+1,N-1);if(slSt[r+1])r++;else if(slSt[r+2])r+=2;      // не договорил пару слов слайда — начинаем со следующего слайда
+  if(rel<2){rel++;let r=Math.min(pos+1,N-1);if(slSt[r+1])r++;else if(slSt[r+2])r+=2;r=chSt[r];      // не договорил пару слов слайда — начинаем со следующего слайда
    say(r,'relead',t,tS)}
   else{auto=true;log('auto');say(s,'auto',t,tS)}}                                      // две попытки без ответа: идём дальше по плану
  else if(phase!='pause')phase='hold'}
@@ -303,7 +300,7 @@ async function listenL(){const t=now();try{await loadVosk();if(!on)return;
    listMics();
    vCtx=new (window.AudioContext||window.webkitAudioContext)();const src=vCtx.createMediaStreamSource(vStream);vNode=vCtx.createScriptProcessor(4096,1,1);
    vNode.onaudioprocess=e=>{if(on&&vRec)try{vRec.acceptWaveform(e.inputBuffer)}catch(x){}};src.connect(vNode);vNode.connect(vCtx.destination);
-   log('mic',vStream.getAudioTracks()[0].label,vCtx.sampleRate)}
+   micName=vStream.getAudioTracks()[0].label;log('mic',micName,vCtx.sampleRate)}
   if(vRec)try{vRec.remove()}catch(e){}
   const w=W.join(' ').toLowerCase().replace(/ё/g,'е').replace(/[^а-я\s-]/g,' ').split(/[\s-]+/).filter(Boolean);
   vRec=new vModel.KaldiRecognizer(vCtx.sampleRate,JSON.stringify([[...new Set([...w,...EXTRA.split(' ')])].join(' '),'[unk]']));vTail='';
@@ -348,13 +345,13 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:13,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:14,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
  const lab={lead:'веду',slide:'веду',pause:'пауза слайда',hold:'жду тебя',relead:'подсказываю',auto:'веду по плану'};
  $('#th').textContent=!on?'':(recRun?'● слушаю':'○ микрофон')+' · '+(mode=='wait'?'жду начала':t<muteUntil?'пауза':lab[phase]||'');
- $('#dbg').textContent='Твой темп '+(tempo*N/C[N-1]).toFixed(1)+' сл/с · голос '+(vps*N/C[N-1]).toFixed(1)+' сл/с · ты идёшь за голосом на '+lagE.toFixed(1)+' с';
+ $('#dbg').textContent='Твой темп '+(tempo*N/C[N-1]).toFixed(1)+' сл/с · голос '+(vps*N/C[N-1]).toFixed(1)+' сл/с · ты идёшь за голосом на '+lagE.toFixed(1)+' с'+(micName?' · микрофон: '+micName:'');
  if(!t0||mode=='done')return;const el=(t-t0)/1000;
  $('#tm').textContent=Math.floor(el/60)+':'+String(Math.floor(el%60)).padStart(2,'0');
  const s=S[P[cur].s],e=S[P[cur].s+1]?S[P[cur].s+1].a:END,fr=cl((pos+1-s.w0)/(s.w1-s.w0+1),0,1),b=Math.round(el-(s.a+fr*(e-s.a)));
