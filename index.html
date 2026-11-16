@@ -52,7 +52,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 16 · 16.11</span>
+<span id="ver" class="note">версия 17 · 16.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -144,7 +144,7 @@ function parse(){W=[];P=[];S=[];
  if(!P.length){S=[{t:'Питч',a:0,w0:0,w1:0}];P=[{s:0,w0:0,w1:0}];W=['Текст']}
  N=W.length;C=[];KS=[];WT=[];chEnd=[];chSt=[];slSt=[];let c=0;
  W.forEach((w,i)=>{c+=syl(w);C[i]=c;
-  const parts=w.split('-'),k=[stem(w),stem(parts[0]),stem(parts[parts.length-1])].filter(Boolean);if(k.some(x=>/\d/.test(x)||NUMW.test(x)))k.push('#');KS[i]=k;
+  const parts=w.split('-'),lw=w.toLowerCase().replace(/ё/g,'е').replace(/[^а-я]/g,''),cm=lw.match(/^(гидро|микрогидр|микро|электро|робото|персон)(.{4,})$/),k=[stem(w),stem(parts[0]),stem(parts[parts.length-1]),cm?stem(cm[1]=='микрогидр'?'гидр'+cm[2]:cm[1]=='персон'?'анализировать':cm[2]):''].filter(Boolean);if(k.some(x=>/\d/.test(x)||NUMW.test(x)))k.push('#');KS[i]=k;
   const n=k.length?k[0].length:0;WT[i]=/\d/.test(k[0]||'')||n>=5?1:n>=3?.7:n==2?.5:.3});
  P.forEach((p,pi)=>{if(pi&&P[pi-1].s!=p.s)slSt[p.w0]=true;
   let segs=[],a=p.w0;                                  // куски для голоса: по знакам препинания, 2–8 слов
@@ -182,7 +182,7 @@ function track(tx){
   if(!wait&&slW0[j]>slW0[Math.max(pos,0)]&&vNext<=slW0[j]&&j-slW0[j]<3)continue;          // новый слайд, который голос ещё не начинал: верим, только если распознаны его первые четыре слова
   if(!wait&&chSt[j]==j&&j<N-1)continue;                                                   // одиночному первому слову новой фразы не верим: модель часто «угадывает» его
   const d=j-pos;let th=d<=2?1:d<=4?1.5:d<=8?2.5:3.5;if(d>4&&i<m-1)continue;               // прыжок дальше четырёх слов — только по самому свежему слову, не по обрывку старого текста
-  if(!wait&&Math.abs(j-vi)<=6)th=Math.min(th,2);if(wait)th=Math.max(th,2);
+  if(auto&&Math.abs(j-vi)<=6)th=Math.min(th,2);if(wait)th=Math.max(th,2);
   if(h<th)continue;const v=h-.08*Math.abs(d-2)-(i<m-1?.3:0);if(v>bv){bv=v;best=j}}
  log('rec',key,best,tx.length);if(best<0)tUnk=tHeard;
  if(best>=0)advance(best)}
@@ -350,7 +350,7 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:16,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:17,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
