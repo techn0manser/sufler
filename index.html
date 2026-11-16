@@ -48,7 +48,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 9 · 15.11</span>
+<span id="ver" class="note">версия 10 · 16.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -273,7 +273,9 @@ async function listenL(){const t=now();try{await loadVosk();if(!on)return;
   if(vRec)try{vRec.remove()}catch(e){}
   const w=W.join(' ').toLowerCase().replace(/ё/g,'е').replace(/[^а-я\s-]/g,' ').split(/[\s-]+/).filter(Boolean);
   vRec=new vModel.KaldiRecognizer(vCtx.sampleRate,JSON.stringify([[...new Set([...w,...EXTRA.split(' ')])].join(' '),'[unk]']));vTail='';
-  vRec.on('partialresult',e=>{const p=e.result.partial;if(p)heard(vTail+' '+p)});
+  let pk='',pt=0;                                                                          // последнее слово черновика часто угадано неверно: верим ему, только если оно продержалось 0,3 с
+  vRec.on('partialresult',e=>{const p=e.result.partial;if(!p)return;const a=p.split(' '),k=a.length+a[a.length-1],t=now();if(k!=pk){pk=k;pt=t}
+   heard(vTail+' '+(t-pt>=300?p:a.slice(0,-1).join(' ')))});
   vRec.on('result',e=>{const x=e.result.text;if(x){heard(vTail+' '+x);vTail=x.split(' ').slice(-5).join(' ')}});
   recRun=true;tSR=now();log('sr+','local',now()-t);
   if(mode=='wait'){$('#st').textContent='Жду первых слов питча…';const u=new SpeechSynthesisUtterance('Слушаю');u.lang='ru-RU';if(voice)u.voice=voice;speechSynthesis.speak(u)}}
@@ -309,7 +311,7 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:9,sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:10,sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
