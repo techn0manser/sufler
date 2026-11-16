@@ -41,6 +41,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <button id="ldm" aria-label="Опережение меньше">−</button><span id="ldv" class="val"></span><button id="ldp" aria-label="Опережение больше">+</button>
 <button id="spm" aria-label="Пауза слайда меньше">−</button><span id="spv" class="val"></span><button id="spp" aria-label="Пауза слайда больше">+</button>
 <button id="vlm" aria-label="Тише">−</button><span id="vlv" class="val"></span><button id="vlp" aria-label="Громче">+</button>
+<button id="bp" style="grid-column:span 4"></button>
 <button id="vo">Голос: вкл</button><select id="vs" aria-label="Голос"></select>
 <button id="srm" style="grid-column:span 4"></button>
 <select id="mic" aria-label="Микрофон" style="grid-column:span 4"><option value="">Микрофон: по умолчанию</option></select>
@@ -51,7 +52,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 15 · 16.11</span>
+<span id="ver" class="note">версия 16 · 16.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -180,7 +181,7 @@ function track(tx){
  for(let i=Math.max(0,m-2);i<m;i++)for(let j=pos+1;j<=hi;j++){const h=H[i][j];if(h===undefined)continue;
   if(!wait&&slW0[j]>slW0[Math.max(pos,0)]&&vNext<=slW0[j]&&j-slW0[j]<3)continue;          // новый слайд, который голос ещё не начинал: верим, только если распознаны его первые четыре слова
   if(!wait&&chSt[j]==j&&j<N-1)continue;                                                   // одиночному первому слову новой фразы не верим: модель часто «угадывает» его
-  const d=j-pos;let th=d<=2?1:d<=5?1.5:d<=12?2.5:3.5;
+  const d=j-pos;let th=d<=2?1:d<=4?1.5:d<=8?2.5:3.5;if(d>4&&i<m-1)continue;               // прыжок дальше четырёх слов — только по самому свежему слову, не по обрывку старого текста
   if(!wait&&Math.abs(j-vi)<=6)th=Math.min(th,2);if(wait)th=Math.max(th,2);
   if(h<th)continue;const v=h-.08*Math.abs(d-2)-(i<m-1?.3:0);if(v>bv){bv=v;best=j}}
  log('rec',key,best,tx.length);if(best<0)tUnk=tHeard;
@@ -272,7 +273,7 @@ function engine(t){
  if(s>=N){if(pos>=N-3||t-Math.max(tPos,tVE)>4000)finish();return}
  if(slSt[s]&&pos<s){                                                                   // граница слайдов: пауза на вдох
   const fin=tPos+((Cb(s)-C[pos])/tempo-REC)*1000;                                      // когда человек должен договорить слайд
-  if(auto||pos>=s-6&&t>=fin){phase='pause';const ref=auto?tVE+leadT*1000:Math.max(tVE+leadT*1000,fin);
+  if(auto||pos>=s-6&&t>=fin){phase='pause';if(beeped!=s){beeped=s;beep()}const ref=auto?tVE+leadT*1000:Math.max(tVE+leadT*1000,fin);
    const sp=Math.max(300,(slideP-sLag)*1000);if(t-tUnk<700&&t<ref+sp+1500)return;                                      // слышим речь: возможно, он начал сам — не перебиваем
    if(t>=ref+(auto?slideP*1000:sp)-lat)say(s,auto?'auto':'slide',t,tS);return}
   if(act)return}
@@ -326,6 +327,9 @@ function listen(){if(!on)return;lastTry=now();if(useLocal){if(!vBusy&&!recRun){v
  rec.onend=()=>{recRun=false;log('sr-');setTimeout(()=>{if(on&&!recRun)listen()},200)};
  rec.onspeechstart=()=>log('sp+');rec.onspeechend=()=>log('sp-');rec.onsoundstart=()=>log('snd+');rec.onsoundend=()=>log('snd-');rec.onaudiostart=()=>log('au+');rec.onaudioend=()=>log('au-');
  lastTry=now();try{rec.start()}catch(e){recRun=false}}
+let beepOn=LS.get('beep')!='0',beeped=-1;
+function beep(){if(!beepOn||!ac)return;try{const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;o.frequency.value=880;   // короткий сигнал: слайд договорён, пора переключать
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.25,t+.01);g.gain.linearRampToValueAtTime(0,t+.14);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.16);log('beep')}catch(e){}}
 function ka(){if(ac)return;const A=window.AudioContext||window.webkitAudioContext;if(!A)return;   // тихий тон держит блютуз-канал открытым
  ac=new A();const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=100;g.gain.value=.003;o.connect(g);g.connect(ac.destination);o.start()}
 function wake(){if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{})}
@@ -346,7 +350,7 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:15,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:16,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
@@ -357,7 +361,7 @@ function tick(){const t=now();engine(t);
  $('#tm').textContent=Math.floor(el/60)+':'+String(Math.floor(el%60)).padStart(2,'0');
  const s=S[P[cur].s],e=S[P[cur].s+1]?S[P[cur].s+1].a:END,fr=cl((pos+1-s.w0)/(s.w1-s.w0+1),0,1),b=Math.round(el-(s.a+fr*(e-s.a)));
  $('#dl').textContent=Math.abs(b)<5?'в графике':b>0?'отстаёшь на '+b+' с':'впереди на '+(-b)+' с'}
-function showSet(){$('#vlv').textContent='Громкость записи ×'+vol.toFixed(1);$('#vsrc').textContent='Озвучка: '+(recOn()?'моя запись':recWant?'синтезатор (нет записи)':'синтезатор');$('#srm').textContent='Распознавание: '+(useLocal?'в телефоне (без интернета)':'Google (нужен интернет)');$('#ldv').textContent='Опережение '+leadT.toFixed(1)+' с';$('#spv').textContent='Пауза слайда '+slideP.toFixed(1)+' с'}
+function showSet(){$('#bp').textContent='Сигнал смены слайда: '+(beepOn?'вкл':'выкл');$('#vlv').textContent='Громкость записи ×'+vol.toFixed(1);$('#vsrc').textContent='Озвучка: '+(recOn()?'моя запись':recWant?'синтезатор (нет записи)':'синтезатор');$('#srm').textContent='Распознавание: '+(useLocal?'в телефоне (без интернета)':'Google (нужен интернет)');$('#ldv').textContent='Опережение '+leadT.toFixed(1)+' с';$('#spv').textContent='Пауза слайда '+slideP.toFixed(1)+' с'}
 const step=(k,d,a,b)=>()=>{if(k=='lead'){leadT=cl(+(leadT+d).toFixed(1),a,b);LS.set(k,leadT)}else{slideP=cl(+(slideP+d).toFixed(1),a,b);LS.set(k,slideP)}showSet()};
 $('#go').onclick=()=>on?stop():start();
 $('#bk').onclick=()=>nav((cur>0?P[cur-1].w0:0)-1);
@@ -369,6 +373,7 @@ $('#vlm').onclick=()=>{vol=cl(+(vol-.5).toFixed(1),.5,4);LS.set('vol',vol);wire(
 $('#mic').onchange=e=>{LS.set('mic',e.target.value)};
 $('#vsrc').onclick=()=>{if(on)return;recWant=!recWant;LS.set('vsrc',recWant?'rec':'tts');showSet()};
 $('#vfile').onclick=()=>$('#vf').click();$('#vf').onchange=e=>{if(e.target.files[0])pickVoice(e.target.files[0])};
+$('#bp').onclick=()=>{beepOn=!beepOn;LS.set('beep',beepOn?'1':'0');showSet()};
 $('#vo').onclick=e=>{voiceOn=!voiceOn;if(!voiceOn)cancelAll(now());e.target.textContent='Голос: '+(voiceOn?'вкл':'выкл')};
 $('#cf').onclick=()=>{$('#set').hidden=!$('#set').hidden;$('#box').hidden=true};
 $('#ldm').onclick=step('lead',-.1,0,1.2);$('#ldp').onclick=step('lead',.1,0,1.2);
