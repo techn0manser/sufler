@@ -53,7 +53,7 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 18 · 17.11</span>
+<span id="ver" class="note">версия 19 · 17.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -299,7 +299,8 @@ async function loadVosk(){if(vModel)return;$('#st').textContent='Загружа�
  vModel=await Vosk.createModel(URL.createObjectURL(new Blob(bufs)))}
 async function listenL(){const t=now();try{await loadVosk();if(!on)return;
   if(!vStream){const au={channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},id=LS.get('mic');   // подавление эха: чтобы суфлёр не слышал собственный голос из наушника
-   try{vStream=await navigator.mediaDevices.getUserMedia({audio:id?{...au,deviceId:{exact:id}}:au})}catch(e){log('err','mic',String(e));vStream=await navigator.mediaDevices.getUserMedia({audio:au})}
+   try{vStream=await navigator.mediaDevices.getUserMedia({audio:id?{...au,deviceId:{exact:id}}:au})}catch(e){log('err','mic',String(e));LS.set('mic','');   // сохранённый микрофон больше не существует: забываем его, чтобы не терять время при следующем старте
+   vStream=await navigator.mediaDevices.getUserMedia({audio:au})}
    listMics();
    vCtx=new (window.AudioContext||window.webkitAudioContext)();const src=vCtx.createMediaStreamSource(vStream);vNode=vCtx.createScriptProcessor(4096,1,1);
    vNode.onaudioprocess=e=>{if(on&&vRec)try{vRec.acceptWaveform(e.inputBuffer)}catch(x){}};src.connect(vNode);vNode.connect(vCtx.destination);
@@ -351,7 +352,7 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:18,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:19,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
