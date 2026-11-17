@@ -47,12 +47,13 @@ select{height:48px;grid-column:span 3;border:0;border-radius:10px;padding:0 10px
 <select id="mic" aria-label="Микрофон" style="grid-column:span 4"><option value="">Микрофон: по умолчанию</option></select>
 <button id="vsrc" class="w2"></button><button id="vfile" class="w2">Выбрать запись</button><input id="vf" type="file" accept="audio/*" hidden>
 <button id="ed" class="w2">Текст питча</button><button id="lg" class="w2">Журнал</button>
+<span id="off" class="note"></span>
 <span id="dbg" class="note"></span>
 </div>
 <footer class="bar">
 <button id="bk">Назад</button><button id="go">Старт</button><button id="nx">Дальше</button><button id="rs">Сначала</button>
 <button id="hn">Подсказать</button><button id="ps">Пауза 10 с</button><button id="lk">Блок экрана</button><button id="cf">Настройки</button>
-<span id="ver" class="note">версия 17 · 16.11</span>
+<span id="ver" class="note">версия 18 · 17.11</span>
 </footer>
 <div id="lock" hidden><div id="lkt">Экран заблокирован. Удерживай 2 секунды, чтобы снять</div></div>
 <script>
@@ -350,7 +351,7 @@ function stop(){on=false;if(ac){try{ac.close()}catch(e){}ac=null}try{rec.stop()}
 function finish(){mode='done';stop();$('#st').textContent='Питч закончен'}
 function nav(p){const t=now();pos=p;bet=0;uC=C[p]||0;cancelAll(t);vNext=pos+1;tPos=t;rel=0;auto=false;shadow=null;hist=[];
  if(mode=='done')mode='idle';if(on&&pos>=0&&mode!='lead'){mode='lead';if(!t0)t0=t}render()}
-function dump(){return JSON.stringify({v:17,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
+function dump(){return JSON.stringify({v:18,vol,vsrc:recOn()?'rec':'tts',sr:useLocal?'local':'google',lagE:+lagE.toFixed(2),sLag:+sLag.toFixed(2),leadT,slideP,tempo:+tempo.toFixed(2),vps:+vps.toFixed(2),lat:Math.round(lat),voice:voice&&voice.name})+'\n'+LOG.map(r=>JSON.stringify(r)).join('\n')}
 function tick(){const t=now();engine(t);
  if(on&&!recRun&&t-lastTry>1500)listen();
  if(on&&recRun&&!useLocal&&mode=='lead'&&t-tHeard>6000&&t-lastTry>8000){log('sr!');listen()}   // распознавание молчит 6 с: перезапускаем, не дожидаясь ошибки сети
@@ -361,7 +362,10 @@ function tick(){const t=now();engine(t);
  $('#tm').textContent=Math.floor(el/60)+':'+String(Math.floor(el%60)).padStart(2,'0');
  const s=S[P[cur].s],e=S[P[cur].s+1]?S[P[cur].s+1].a:END,fr=cl((pos+1-s.w0)/(s.w1-s.w0+1),0,1),b=Math.round(el-(s.a+fr*(e-s.a)));
  $('#dl').textContent=Math.abs(b)<5?'в графике':b>0?'отстаёшь на '+b+' с':'впереди на '+(-b)+' с'}
-function showSet(){$('#bp').textContent='Сигнал смены слайда: '+(beepOn?'вкл':'выкл');$('#vlv').textContent='Громкость записи ×'+vol.toFixed(1);$('#vsrc').textContent='Озвучка: '+(recOn()?'моя запись':recWant?'синтезатор (нет записи)':'синтезатор');$('#srm').textContent='Распознавание: '+(useLocal?'в телефоне (без интернета)':'Google (нужен интернет)');$('#ldv').textContent='Опережение '+leadT.toFixed(1)+' с';$('#spv').textContent='Пауза слайда '+slideP.toFixed(1)+' с'}
+async function offReady(){let m=false;try{const c=await caches.open('sufler-v1');m=!!(await c.match('vosk/model.tar.gz.00'))&&!!(await c.match('vosk/model.tar.gz.01'))&&!!(await c.match('vosk/vosk.js'))}catch(e){}
+ const miss=[];if(!m)miss.push('модель распознавания (нажми «Старт» один раз с интернетом)');if(!aEl)miss.push('запись голоса');if(!TM)miss.push('разметка записи');
+ $('#off').textContent=miss.length?'Без интернета пока не готово, не хватает: '+miss.join('; '):'Без интернета: всё на телефоне, готово'}
+function showSet(){offReady();$('#bp').textContent='Сигнал смены слайда: '+(beepOn?'вкл':'выкл');$('#vlv').textContent='Громкость записи ×'+vol.toFixed(1);$('#vsrc').textContent='Озвучка: '+(recOn()?'моя запись':recWant?'синтезатор (нет записи)':'синтезатор');$('#srm').textContent='Распознавание: '+(useLocal?'в телефоне (без интернета)':'Google (нужен интернет)');$('#ldv').textContent='Опережение '+leadT.toFixed(1)+' с';$('#spv').textContent='Пауза слайда '+slideP.toFixed(1)+' с'}
 const step=(k,d,a,b)=>()=>{if(k=='lead'){leadT=cl(+(leadT+d).toFixed(1),a,b);LS.set(k,leadT)}else{slideP=cl(+(slideP+d).toFixed(1),a,b);LS.set(k,slideP)}showSet()};
 $('#go').onclick=()=>on?stop():start();
 $('#bk').onclick=()=>nav((cur>0?P[cur-1].w0:0)-1);
@@ -395,7 +399,7 @@ function pv(){const l=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLow
  voice=l.find(v=>v.name==keep)||l.find(v=>/natural|neural/i.test(v.name))||l[0]||null;if(voice)s.value=voice.name;if(!l.length)s.innerHTML='<option>Голос по умолчанию</option>';
  s.onchange=()=>{voice=l.find(v=>v.name==s.value)||voice;if(voice)LS.set('voice',voice.name);const u=new SpeechSynthesisUtterance('Проверка голоса: меня зовут Евгений.');u.voice=voice;speechSynthesis.cancel();speechSynthesis.speak(u)}}
 speechSynthesis.onvoiceschanged=pv;pv();
-parse();build();render();showSet();setInterval(tick,100);loadVoice();listMics();
+parse();build();render();showSet();setInterval(tick,100);loadVoice();listMics();try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}   // просим браузер не удалять модель и запись
 window.__dbg=()=>({W,C,S,slSt,pos,mode,phase,auto,rel,tempo,vps,lat,vNext,LOG});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
